@@ -1,78 +1,66 @@
-#!/usr/bin/python3
-"""
-Custom base class for the entire project
-"""
-
-from uuid import uuid4
-from datetime import datetime
+#!/usr/bin/env python3
+"""Defines the BaseModel class."""
 import models
+from datetime import datetime
+from os import getenv
+from sqlalchemy import Column, DateTime, String
+from sqlalchemy.ext.declarative import declarative_base
+from uuid import uuid4
+
+Base = declarative_base()
+
 
 class BaseModel:
-    """Custom base for all the classes in the AirBnb console project
+    """Defines the BaseModel class.
 
-    Arttributes:
-        id(str): handles unique user identity
-        created_at: assigns current datetime
-        updated_at: updates current datetime
-
-    Methods:
-        __str__: prints the class name, id, and creates dictionary
-        representations of the input values
-        save(self): updates instance arttributes with current datetime
-        to_dict(self): returns the dictionary values of the instance obj
-
+    Attributes:
+        id (sqlalchemy String): The BaseModel id.
+        created_at (sqlalchemy DateTime): The datetime at creation.
+        updated_at (sqlalchemy DateTime): The datetime of last update.
     """
 
+    id = Column(String(60), primary_key=True, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+
     def __init__(self, *args, **kwargs):
-        """Public instance artributes initialization
-        after creation
-
-        Args:
-            *args(args): arguments
-            **kwargs(dict): attrubute values
-
-        """
-        DATE_TIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f'
-        if not kwargs:
-            self.id = str(uuid4())
-            self.created_at = datetime.utcnow()
-            self.updated_at = datetime.utcnow()
-            models.storage.new(self)
-        else:
-            for key, value in kwargs.items():
-                if key in ("updated_at", "created_at"):
-                    self.__dict__[key] = datetime.strptime(
-                        value, DATE_TIME_FORMAT)
-                elif key[0] == "id":
-                    self.__dict__[key] = str(value)
-                else:
-                    self.__dict__[key] = value
-
-    def __str__(self):
-        """
-        Returns string representation of the class
-        """
-        return "[{}] ({}) {}".format(self.__class__.__name__,
-                                     self.id, self.__dict__)
+        """Initialization of the base model"""
+        self.id = str(uuid4())
+        self.created_at = self.updated_at = datetime.utcnow()
+        if kwargs:
+            for k, v in kwargs.items():
+                if k == "created_at" or k == "updated_at":
+                    v = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S.%f")
+                if k != "__class__":
+                    setattr(self, k, v)
 
     def save(self):
-        """
-        Updates the public instance attribute:
-        'updated_at' - with the current datetime
-        """
+        """Update updated_at with the current datetime."""
         self.updated_at = datetime.utcnow()
+        models.storage.new(self)
         models.storage.save()
 
-    def to_dict(self):
+    def to_dict(self, remove_password=True):
+        """Return a dictionary representation of the BaseModel instance.
+
+        Includes the key/value pair __class__ representing the class name
+        of the object. Does not store passwords unless instructed.
         """
-        Method returns a dictionary containing all 
-        keys/values of __dict__ instance
-        """
-        map_objects = {}
-        for key, value in self.__dict__.items():
-            if key == "created_at" or key == "updated_at":
-                map_objects[key] = value.isoformat()
-            else:
-                map_objects[key] = value
-        map_objects["__class__"] = self.__class__.__name__
-        return map_objects
+        dictionary = self.__dict__.copy()
+        dictionary["__class__"] = str(type(self).__name__)
+        dictionary["created_at"] = self.created_at.isoformat()
+        dictionary["updated_at"] = self.updated_at.isoformat()
+        dictionary.pop("_sa_instance_state", None)
+        if remove_password is True:
+            dictionary.pop("password", None)
+        return dictionary
+
+    def delete(self):
+        """Delete the current instance from storage."""
+        models.storage.delete(self)
+
+    def __str__(self):
+        """Return the print/str representation of the BaseModel instance."""
+        d = self.__dict__.copy()
+        d.pop("_sa_instance_state", None)
+        return "[{}] ({}) {}".format(type(self).__name__, self.id, d)
